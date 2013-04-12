@@ -1,0 +1,59 @@
+#!/usr/bin/env node --harmony-proxies
+
+var path = require('path'),
+    fs = require('fs'),
+    utils = require('../src/utils'),
+    argv = require('optimist').argv,
+    ovh = require('ovh');
+
+if (typeof(argv.help) !== 'undefined' || argv._.length < 2) {
+  console.info('Usage: pca-config cloud-passport pca-service-name');
+  console.info('Options:');
+  console.info('   --help          Displays this help');
+  console.info('   --file          Path for the saved configuration file, default is ~/.ovh-pca');
+  console.info('   --appKey        Use a different application key');
+  console.info('   --appSecret     Use a different application secret');
+  process.exit(0);
+}
+
+// Config
+var config = {
+  file:                 path.normalize(path.join(process.env.HOME || process.env.HOMEPATH, '.ovh-pca')),
+  appKey:               'fXniVcwefm5X2Fjt',
+  appSecret:            'P4FcVBKFlb9A7P9l3oi2Jaqw8CXAnBrw',
+  passportServiceName:  argv._[0],
+  pcaServiceName:       argv._[1]
+};
+
+utils.merge(config, argv);
+
+// Call auth
+var rest = ovh({ auth: { type: 'REST', path: '/auth' } }, config),
+    restPath = '/cloud/' + config.passportServiceName + '/pca/' + config.pcaServiceName + '*';
+rest.auth.call('POST', '/auth/credential', {
+  'accessRules': [
+    { 'method': 'GET', 'path': restPath },
+    { 'method': 'POST', 'path': restPath },
+    { 'method': 'PUT', 'path': restPath },
+    { 'method': 'DELETE', 'path': restPath }
+  ]
+}, function (success, credential) {
+  if (!success) {
+    console.error('Failed while requesting a consumer key');
+    console.error('Error returned was: ' + credential);
+    process.exit(1);
+  }
+
+  config.consumerKey = credential.consumerKey;
+  config.credentialToken = credential.validationUrl.split('credentialToken=')[1];
+
+  // Write config
+  delete config._;
+  delete config.$0;
+  fs.writeFileSync(config.file, JSON.stringify(config));
+
+  // Ask for consumerKey activation
+  console.info('Your PCA configuration file was created: ' + config.file);
+  console.info('Please go to the following URL to activate your consumer key:');
+  console.info('\n\t' + credential.validationUrl + '\n');
+});

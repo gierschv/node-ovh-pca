@@ -1,0 +1,28 @@
+#!/usr/bin/env node --harmony-proxies
+
+var path = require('path'),
+    fs = require('fs'),
+    utils = require('../src/utils'),
+    argv = require('optimist').argv;
+
+if (typeof(argv.help) !== 'undefined' || argv._.length < 2) {
+  console.info('Usage: pca action [arg, ...] [options]');
+  console.info('Actions:');
+  console.info('   sshkey file     Change the SSH key');
+  console.info('   mount   dir     Mount the existant archived files');
+  console.info('Options:');
+  console.info('   --help          Displays this help');
+  console.info('   --debug         Debug mode');
+  console.info('   --file          Path for the configuration file, default is ~/.ovh-pca');
+  process.exit(0);
+}
+
+var defaultConfigFile = path.normalize(path.join(process.env.HOME || process.env.HOMEPATH, '.ovh-pca')),
+  config = JSON.parse(fs.readFileSync(argv.file || defaultConfigFile));
+
+if (['sshkey', 'mount'].indexOf(argv._[0]) >= 0) {
+  require('../src/pca')[argv._[0]](config, argv._[1]);
+}
+else {
+  console.error('Unkown action or bad usage, use --help to display help.');
+}
