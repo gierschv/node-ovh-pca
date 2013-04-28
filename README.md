@@ -27,6 +27,13 @@ Please go to the following URL to activate your consumer key:
 
 ```
 
+### Set your SSH key
+
+```bash
+$ pca sshkey ~/.ssh/id_dsa.pub
+Your SSH key has been updated.
+```
+
 ### Mount your PCA
 
 ```bash
@@ -66,16 +73,76 @@ dr-xr-xr-x  0 root  wheel  4096 Jan  1  1970 test1.2
 ----------  0 root  wheel       0 Apr 12 01:03 toto
 ```
 
-### Set your SSH key
+### Restore files
+
+To restore files, you have to stage the files you want to restore. To do that, just `chmod u+r` the files you want to restore:
 
 ```bash
-$ pca sshkey ~/.ssh/id_dsa.pub
-Your SSH key has been updated.
+$ chmod -R u+r ~/mnt/517bf4f143e97ba44b000000/backup/mysql
+$ chmod +r ~/mnt/2013-04-10@18:29:33/backup.tgz
+```
+
+Check your staging:
+```bash
+$ pca ltasks
+action    session id                    session name                  file id                       file name
+------    ----------                    ------------                  -------                       ---------
+restore   5165af8da0b3065823000000      2013-04-10@18:29:33           5165b05ff0e897d225000000      backup.tgz
+restore   517bf4f143e97ba44b000000      2013-04-27@15:55:29           517bf4f71d0e50c34b000001      backup/mysql/3.sql.gpg
+restore   517bf4f143e97ba44b000000      2013-04-27@15:55:29           517bf4f71d0e50c34b000000      backup/mysql/2.sql.gpg
+restore   517bf4f143e97ba44b000000      2013-04-27@15:55:29           517bf4f71d0e50c34b000002      backup/mysql/1.sql.gpg
+```
+
+To unstage a file, just `chmod u-r` it.
+
+Create the tasks for these two sessions:
+```bash
+$ pca ltask restore create 5165af8da0b3065823000000
+$ pca ltask restore create 517bf4f143e97ba44b000000
+```
+
+The tasks have been created:
+```bash
+$ pca tasks | grep restore
+779       restore        todo      2013-04-28 20:46:57      178.33.241.56
+778       restore        todo      2013-04-28 20:43:25      178.33.241.56
+```
+
+### Delete files or sessions
+
+To delete files or sesssions, the method is similar than to restore: just `rm` the files.
+
+```bash
+$ rm -f ~/mnt/2013-04-11@23:33:34/memset.S
+$ rm -f ~/mnt/2013-04-11@23:33:34/51674851fbcf72b56700000c
+$ rm -rf ~/mnt/2013-04-10@18:29:33
+ ```
+ 
+Check your staging:
+```bash
+action    session id                    session name                  file id                       file name
+------    ----------                    ------------                  -------                       ---------
+delete    5167484e1b012e9c67000000      2013-04-11@23:33:34           51674851fbcf72b567000004      memset.S
+delete    5167484e1b012e9c67000000      2013-04-11@23:33:34           51674851fbcf72b56700000c      strlen.S
+delete    5165af8da0b3065823000000      2013-04-10@18:29:33           *                             *
+```
+
+Create the tasks for these two sessions:
+```bash
+$ pca ltask delete create 5167484e1b012e9c67000000
+$ pca ltask delete create 5165af8da0b3065823000000
+```
+
+The tasks have been created:
+```bash
+$ pca tasks | grep delete
+789       delete         todo      2013-04-28 23:35:20      178.33.62.120
+790       delete         todo      2013-04-28 23:48:07      178.33.62.120
 ```
 
 ## Changelog
 
-### Todo
+### 0.2.0
 
 * Restore / delete
 
@@ -88,7 +155,7 @@ Your SSH key has been updated.
 node-ovh-pca is freely distributable under the terms of the MIT license.
 
 ```
-Copyright (c) 2012 - 2013 Vincent Giersch <mail@vincent.sh>
+Copyright (c) 2013 Vincent Giersch <mail@vincent.sh>
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation
 files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use,

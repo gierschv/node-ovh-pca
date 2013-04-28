@@ -13,6 +13,7 @@ if (typeof(argv.help) !== 'undefined' || argv._.length < 2) {
   console.info('   --file          Path for the saved configuration file, default is ~/.ovh-pca');
   console.info('   --appKey        Use a different application key');
   console.info('   --appSecret     Use a different application secret');
+  console.info('   --socketPath    Path of UNIX socket, default is /tmp/ovh-pca.sock');
   process.exit(0);
 }
 
@@ -21,6 +22,7 @@ var config = {
   file:                 path.normalize(path.join(process.env.HOME || process.env.HOMEPATH, '.ovh-pca')),
   appKey:               'fXniVcwefm5X2Fjt',
   appSecret:            'P4FcVBKFlb9A7P9l3oi2Jaqw8CXAnBrw',
+  socketPath:           '/tmp/ovh-pca.sock',
   passportServiceName:  argv._[0],
   pcaServiceName:       argv._[1]
 };

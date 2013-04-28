@@ -1,246 +1,238 @@
 var fs = require('fs'),
-    f4js = require('fuse4js'),
+    pad = require('pad-component'),
+    f4js = require('fuse4js-gierschv'),
     moment = require('moment'),
-    helpers = require('./helpers');
+    ipc = require('./ipc').ipc,
+    helpers = require('./helpers'),
+    utils = require('./utils');
 
-var config;
-var handlers = {
-  getattr: function (path, cb) {
-    var stat = {};
-    var err = 0; // assume success
-    helpers.lookup(path, function (info) {
-      var node = info.node;
+/* File type */
+var S_IFMT    =  0170000,         /* type of file mask */
+    S_IFDIR   =  0040000,         /* directory */
+    S_IFREG   =  0100000,         /* regular */
+    S_IFLNK   =  0120000;         /* symbolic link */
 
-      if (typeof(node) !== 'undefined' && node.$type === 'file' &&
-          info.name !== node.$fileId) {
-        node =  '';
-      }
+var config, ipcClt, ipcSrv;
+var handlers = {};
+handlers.getattr = function (path, cb) {
+  var stat = {};
+  var err = 0; // assume success
+  helpers.lookup(path, function (info) {
+    var node = info.node;
 
-      switch (typeof node) {
-      case 'undefined':
-        err = -2; // -ENOENT
-        break;
+    if (typeof(node) !== 'undefined' && node.$type === 'file' &&
+        info.name !== node.$fileId) {
+      node =  '';
+    }
 
-      case 'object':
-        // Symlink to session name
-        if (info.name === node.$sessionId) {
-          stat.mode = 0120555; // symlink with 555
-          stat.size = node.$infos.name.length;
-        }
-        // Symlink to file name
-        else if (info.name === node.$fileId) {
-          stat.mode = 0120555; // symlink with 555
+    switch (typeof node) {
+    case 'undefined':
+      err = -2; // -ENOENT
+      break;
+
+    case 'object':
+      // Symlink to session name
+      if (info.name === node.$sessionId) {
+        if (!helpers.existsDeleteFile(node.$sessionId)) {
+          stat.mode = S_IFLNK | 0000555;
           stat.size = node.$infos.name.length;
         }
         else {
-          stat.size = 4096;   // standard size of a directory
-          stat.mode = 040555; // directory with 555
+          err = -2;
+        } 
+      }
+      // Symlink to file name
+      else if (info.name === node.$fileId) {
+        if (!helpers.existsDeleteFile(node.$sessionId, node.$fileId)) {
+          stat.mode = S_IFLNK | 0000555;
+          stat.size = node.$infos.name.length;
         }
+        else {
+          err = -2;
+        }
+      }
+      else {
+        if (!helpers.existsDeleteFile(node.$sessionId, node.$fileId)) {
+          stat.size = 4096;
+          stat.mode = S_IFDIR | 0000755;
+        }
+        else {
+          err = -2;
+        }
+      }
 
-        break;
+      break;
 
-      case 'string':
-        stat.size = node.length;
-        stat.mode = 0100444; // file with 444
+    case 'string':
+      stat.size = node.length;
+      stat.mode = S_IFREG | 0000444;
 
-        if (typeof(info.node) === 'object' && info.node.$type === 'file') {
-          stat.mode = 0100000;
+      if (typeof(info.node) === 'object' && info.node.$type === 'file') {
+        if (!helpers.existsDeleteFile(info.node.$sessionId, info.node.$fileId)) {
+          stat.mode = S_IFREG | (helpers.existsRestoreFile(info.node.$sessionId, info.node.$fileId) ? 0000400 : 0000000);
           stat.size = info.node.$infos.size;
         }
-        break;
-
-      default:
-        break;
-      }
-
-      // mtime
-      node = info.node;
-      if (typeof(node) === 'object' && typeof(node.$infos) === 'object') {
-        var date;
-        if (typeof(node.$infos.endDate) === 'string') {
-          date = node.$infos.endDate;
-        }
-        else if (node.$type === 'file') {
-          date = helpers.data[node.$sessionId].$infos.endDate;
-        }
-
-        if (typeof(date) !== 'undefined') {
-          stat.ctime = stat.atime = stat.mtime = moment(date).toDate();
+        else {
+          err = -2;
         }
       }
+      break;
 
-      cb(err, stat);
-    });
-  },
+    default:
+      break;
+    }
 
-  /*
-   * Handler for the readdir() system call.
-   * path: the path to the file
-   * cb: a callback of the form cb(err, names), where err is the Posix return code
-   *     and names is the result in the form of an array of file names (when err === 0).
-   */
-  readdir: function (path, cb) {
-    var names = [];
-    var err = 0; // assume success
-    var callCb = true;
-    helpers.lookup(path, function (info) {
-      switch (typeof info.node) {
-      case 'undefined':
-        err = -2; // -ENOENT
-        break;
+    // mtime
+    node = info.node;
+    if (typeof(node) === 'object' && typeof(node.$infos) === 'object') {
+      var date;
+      if (typeof(node.$infos.endDate) === 'string') {
+        date = node.$infos.endDate;
+      }
+      else if (node.$type === 'file') {
+        date = helpers.data[node.$sessionId].$infos.endDate;
+      }
 
-      case 'string': // file
-        err = -22; // -EINVAL
-        break;
+      if (typeof(date) !== 'undefined') {
+        stat.ctime = stat.atime = stat.mtime = moment(date).toDate();
+      }
+    }
 
-      case 'object': // directory
-        var i = 0;
+    // uid & gid
+    stat.uid = process.getuid();
+    stat.gid = process.getgid();
 
-        // Session
-        if (typeof(info.node) === 'object' && info.node.$type === 'session') {
-          callCb = false;
+    cb(err, stat);
+  });
+};
 
-          helpers.fetchSessionFiles(info.node.$sessionId, info.node.$infos.name, function () {
-            for (var key in info.node.files) {
+/*
+ * Handler for the readdir() system call.
+ * path: the path to the file
+ * cb: a callback of the form cb(err, names), where err is the Posix return code
+ *     and names is the result in the form of an array of file names (when err === 0).
+ */
+handlers.readdir = function (path, cb) {
+  var names = [];
+  var err = 0; // assume success
+  var callCb = true;
+  helpers.lookup(path, function (info) {
+    switch (typeof info.node) {
+    case 'undefined':
+      err = -2; // -ENOENT
+      break;
+
+    case 'string': // file
+      err = -22; // -EINVAL
+      break;
+
+    case 'object': // directory
+      var i = 0;
+
+      // Session
+      if (typeof(info.node) === 'object' && info.node.$type === 'session') {
+        callCb = false;
+
+        helpers.fetchSessionFiles(info.node.$sessionId, info.node.$infos.name, function () {
+          for (var key in info.node.files) {
+            if (!helpers.existsDeleteFile(info.node.$sessionId, key)) {
               names[i++] = key;
             }
+          }
 
-            cb(err, names);
-          });
-        }
-        else {
-          for (var key in info.node) {
+          cb(err, names);
+        });
+      }
+      else {
+        for (var key in info.node) {
+          if (!helpers.existsDeleteFile(key)) {
             names[i++] = key;
           }
         }
-        break;
-
-      default:
-        break;
       }
+      break;
 
-      if (callCb) {
-        cb(err, names);
+    default:
+      break;
+    }
+
+    if (callCb) {
+      cb(err, names);
+    }
+  });
+};
+
+handlers.readlink = function (path, cb) {
+  var err = -2, name = '';
+
+  helpers.lookup(path, function (info) {
+    if (info.node.$type === 'session' || info.node.$type === 'file') {
+      err = 0;
+      name = info.node.$infos.name;
+    }
+
+    return cb(err, name);
+  });
+};
+
+handlers.chmod = function (path, mode, cb) {
+  var err = -30;
+
+  helpers.lookup(path, function (info) {
+    if (info.node.$type === 'file') {
+      err = 0;
+      if (mode & 0000400) {
+        helpers.addRestoreFile(info.node);
       }
-    });
-  },
-
-  /*
-   * Handler for the open() system call.
-   * path: the path to the file
-   * flags: requested access flags as documented in open(2)
-   * cb: a callback of the form cb(err, [fh]), where err is the Posix return code
-   *     and fh is an optional numerical file handle, which is passed to subsequent
-   *     read(), write(), and release() calls.
-   */
-  open: function (path, flags, cb) {
-    var err = 0;
-    helpers.lookup(path, function (info) {
-      if (typeof info.node === 'undefined') {
-        err = -2; // -ENOENT
+      else {
+        helpers.delRestoreFile(info.node.$sessionId, info.node.$fileId);
       }
+    }
+    cb(err);
+  });
+};
 
-      cb(err);
-    });
-  },
+handlers.release = function (path, fh, cb) {
+  cb(0);
+};
 
-  /*
-   * Handler for the read() system call.
-   * path: the path to the file
-   * offset: the file offset to read from
-   * len: the number of bytes to read
-   * buf: the Buffer to write the data to
-   * fh:  the optional file handle originally returned by open(), or 0 if it wasn't
-   * cb: a callback of the form cb(err), where err is the Posix return code.
-   *     A positive value represents the number of bytes actually read.
-   */
-  read: function (path, offset, len, buf, fh, cb) {
-    var err = 0; // assume success
-    helpers.lookup(path, function (info) {
-      var file = info.node;
-      var maxBytes;
-      var data;
-
-      switch (typeof file) {
-      case 'undefined':
-        err = -2; // -ENOENT
-        break;
-
-      case 'object': // directory
-        err = -1; // -EPERM
-        break;
-
-      case 'string': // a string treated as ASCII characters
-        if (offset < file.length) {
-          maxBytes = file.length - offset;
-          if (len > maxBytes) {
-            len = maxBytes;
-          }
-          data = file.substring(offset, len);
-          buf.write(data, 0, len, 'ascii');
-          err = len;
-        }
-        break;
-
-      default:
-        break;
-      }
-      cb(err);
-    });
-  },
-  readlink: function (path, cb) {
-    var err = -2, name = '';
-
-    helpers.lookup(path, function (info) {
-      if (info.node.$type === 'session' || info.node.$type === 'file') {
-        err = 0;
-        name = info.node.$infos.name;
-      }
-
-      return cb(err, name);
-    });
-  },
-  write: function (path, cb) {
-    cb(-30); // EROFS
-  },
-  release: function (path, fh, cb) {
+handlers.unlink = function (path, cb) {
+  helpers.lookup(path, function (info) {
+    if (typeof(info.node.$type) !== 'undefined') {
+      helpers.addDeleteFile(info.node);
+    }
     cb(0);
-  },
-  create: function (path, cb) {
-    cb(-30); // EROFS
-  },
-  unlink: function (path, cb) {
-    cb(-30); // EROFS
-  },
-  rename: function (path, cb) {
-    cb(-30); // EROFS
-  },
-  mkdir: function (path, cb) {
-    cb(-30); // EROFS
-  },
-  rmdir: function (path, cb) {
-    cb(-30); // EROFS
-  },
-  init: function (cb) {
-    console.log('File system started at ' + config.mountPoint);
-    console.log('To stop it, type this in another shell: fusermount -u ' + config.mountPoint + ' or umount ' + config.mountPoint);
-    cb();
-  },
-  destroy: function (cb) {
-    console.log('File system stopped');
-    cb();
-  }
+  });
+};
+
+handlers.rmdir = handlers.unlink;
+
+handlers.init = function (cb) {
+  console.info('File system started at ' + config.mountPoint);
+  console.info('To stop it, type this in another shell: fusermount -u ' +
+              config.mountPoint + ' or umount ' + config.mountPoint);
+  cb();
+};
+
+handlers.destroy = function (cb) {
+  console.info('File system stopped');
+  exports.exit();
+  cb();
 };
 
 // Exports
-exports.sshkey = function (_config, filekey) {
+exports.sshkey = function (_config, argv) {
+  if (argv._.length < 2) {
+    return console.error('Usage: pca sshkey file');
+  }
+
   helpers.config = config = _config;
   helpers.fetchService(function(rest, success, result) {
     if (!success) {
       return false;
     }
 
-    this.sshkey = fs.readFileSync(filekey).toString();
+    this.sshkey = fs.readFileSync(argv._[1]).toString();
     this.$put(function(success, error) {
       if (success) {
         console.info('Your SSH key has been updated.');
@@ -252,18 +244,177 @@ exports.sshkey = function (_config, filekey) {
   });
 };
 
-exports.mount = function (_config, mountPoint) {
+exports.tasks = function (_config, argv) {
   helpers.config = config = _config;
-  config.mountPoint = mountPoint;
+  helpers.restPca().tasks.$get({ function: argv.function }, function (success, tasks) {
+    console.info('id        function       status    todoDate                 ipAddress');
+    console.info('--        --------       ------    --------                 ---------');
+    for (var i = 0 ; i < tasks.length ; ++i) {
+      this[tasks[i]].$get(function (success, task) {
+        if (success) {
+          console.info(pad.right(task.id, 10) +
+                       pad.right(task.function, 15) +
+                       pad.right(task.status, 10) +
+                       pad.right(task.todoDate, 25) + task.ipAddress);
+        }
+      });
+    }
+  });
+};
+
+exports.task = function (_config, argv) {
+  if (argv._.length < 2) {
+    return console.error('Usage: pca task id');
+  }
+  helpers.config = config = _config;
+
+  helpers.restPca().tasks[argv._[1]].$get(function (success, task) {
+    console.info(task);
+  });
+};
+
+exports.ltasks = function (_config, argv) {
+  helpers.config = config = _config;
+  ipcClt = new ipc(config.socketPath).client();
+  ipcClt
+    .on('connect', function(conn) {
+      ipcClt.write({ call: 'ltasks' });
+    })
+    .on('data', function(sessions) {
+      ipcClt.destroy();
+      console.info('action    session id                    session name                  file id                       file name');
+      console.info('------    ----------                    ------------                  -------                       ---------');
+
+      var sid, fid;
+      for (sid in sessions.restore) {
+        for (fid in sessions.restore[sid]) {
+          if (fid[0] !== '$') {
+            console.info(pad.right('restore', 10) +
+                         pad.right(sid, 30) + pad.right(sessions.restore[sid].$name, 30) +
+                         pad.right(fid, 30) + sessions.restore[sid][fid].$infos.name);
+          }
+        }
+      }
+
+      for (sid in sessions.delete) {
+        if (typeof(sessions.delete[sid]) === 'string') {
+          console.info(pad.right('delete', 10) +
+                       pad.right(sid, 30) + pad.right(sessions.delete[sid], 30) +
+                       pad.right('*', 30) + '*');
+        }
+        else {
+          for (fid in sessions.delete[sid]) {
+            if (fid[0] !== '$') {
+              console.info(pad.right('delete', 10) +
+                           pad.right(sid, 30) + pad.right(sessions.delete[sid].$name, 30) +
+                           pad.right(fid, 30) + sessions.delete[sid][fid].$infos.name);
+            }
+          }
+        }
+      }
+    });
+};
+
+exports.ltask = function (_config, argv) {
+  if (argv._.length < 4) {
+    return console.error('Usage: pca ltask (restore|delete) (cancel|create) sessionId');
+  }
+  helpers.config = config = _config;
+  ipcClt = new ipc(config.socketPath).client();
+  ipcClt
+    .on('connect', function(conn) {
+      ipcClt.write({ call: 'ltask', task: argv._[1], action: argv._[2], sessionId: argv._[3] });
+    })
+    .on('data', function(result) {
+      ipcClt.destroy();
+      console.info(result);
+    });
+};
+
+exports.ltaskProcess = function (ltask, callback) {
+  if (ltask.task !== 'restore' && ltask.task !== 'delete') {
+    return callback({ success: false, result: 400 });
+  }
+
+  if (typeof(helpers.ltasks[ltask.task]) !== 'undefined' &&
+      typeof(helpers.ltasks[ltask.task][ltask.sessionId]) !== 'undefined') {
+    if (ltask.action === 'cancel') {
+      delete helpers.ltasks[ltask.task][ltask.sessionId];
+      return callback({ success: true });
+    }
+    else if (ltask.action === 'create') {
+      if (typeof(helpers.ltasks[ltask.task][ltask.sessionId]) === 'string' &&
+          ltask.task === 'delete') {
+        helpers.createTaskDeleteSession(ltask.sessionId, function (success, result) {
+          delete helpers.ltasks[ltask.task][ltask.sessionId];
+          callback({ success: success, result: utils.clone(result) });
+        });
+      }
+      else {
+        var files = [];
+        for (var fid in helpers.ltasks[ltask.task][ltask.sessionId]) {
+          if (fid[0] !== '$') {
+            files.push(fid);
+          }
+        }
+
+        helpers.createTask(ltask.task, ltask.sessionId, files, function (success, result) {
+          delete helpers.ltasks[ltask.task][ltask.sessionId];
+          callback({ success: success, result: utils.clone(result) });
+        });
+      }
+    }
+  }
+  else {
+    return callback({ success: false, result: 404 });
+  }
+};
+
+exports.mount = function (_config, argv) {
+  if (argv._.length < 2) {
+    return console.error('Usage: pca mount directory');
+  }
+
+  helpers.config = config = _config;
+  config.mountPoint = argv._[1];
+  config.debug = argv.debug || false;
+
+  // Listening for ltasks
+  ipcSrv = new ipc(config.socketPath).server();
+  ipcSrv.on('data', function(data, conn) {
+    if (data.call === 'ltasks') {
+      conn.write(utils.clone(helpers.ltasks));
+      conn.end();
+    }
+    else if (data.call === 'ltask') {
+      exports.ltaskProcess(data, function (result) {
+        conn.write(result);
+        conn.end();
+      });
+    }
+  });
+
+  // Fuse
   helpers.fetchService(function(rest, success, result) {
     if (!success) {
       return false;
     }
 
     try {
-      f4js.start(mountPoint, handlers, config.debug !== undefined);
+      f4js.start(config.mountPoint, handlers, config.debug);
     } catch (e) {
-      console.log('Exception when starting file system: ' + e);
+      console.error('Exception when starting file system: ' + e);
     }
   });
 };
+
+// Graceful exit
+exports.exit = function () {
+  if (typeof(ipcSrv) !== 'undefined') {
+    ipcSrv.close();
+  }
+  process.exit(0);
+};
+
+process.on('SIGINT', exports.exit)
+       .on('SIGTERM', exports.exit);
