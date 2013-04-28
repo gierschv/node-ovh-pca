@@ -47,30 +47,30 @@ In an another terminal, list your sessions (presented as folder named with the s
 ```bash
 $ ls -l ~/mnt
 total 64
-dr-xr-xr-x  0 root  wheel  4096 Apr 10 18:33 2013-04-10@18:29:33
-dr-xr-xr-x  0 root  wheel  4096 Apr 11 23:33 2013-04-11@23:33:34
-dr-xr-xr-x  0 root  wheel  4096 Apr 11 23:35 2013-04-11@23:35:02
-dr-xr-xr-x  0 root  wheel  4096 Apr 12 01:03 2013-04-12@01:03:19
-lr-xr-xr-x  0 root  wheel    19 Apr 10 18:33 5165af8da0b3065823000000 -> 2013-04-10@18:29:33
-lr-xr-xr-x  0 root  wheel    19 Apr 11 23:33 5167484e1b012e9c67000000 -> 2013-04-11@23:33:34
-lr-xr-xr-x  0 root  wheel    19 Apr 11 23:35 516748a6cfba121168000000 -> 2013-04-11@23:35:02
-lr-xr-xr-x  0 root  wheel    19 Apr 12 01:03 51675d57a68f060c2f000000 -> 2013-04-12@01:03:19
+dr-xr-xr-x  0 user  users  4096 Apr 10 18:33 2013-04-10@18:29:33
+dr-xr-xr-x  0 user  users  4096 Apr 11 23:33 2013-04-11@23:33:34
+dr-xr-xr-x  0 user  users  4096 Apr 11 23:35 2013-04-11@23:35:02
+dr-xr-xr-x  0 user  users  4096 Apr 12 01:03 2013-04-12@01:03:19
+lr-xr-xr-x  0 user  users    19 Apr 10 18:33 5165af8da0b3065823000000 -> 2013-04-10@18:29:33
+lr-xr-xr-x  0 user  users    19 Apr 11 23:33 5167484e1b012e9c67000000 -> 2013-04-11@23:33:34
+lr-xr-xr-x  0 user  users    19 Apr 11 23:35 516748a6cfba121168000000 -> 2013-04-11@23:35:02
+lr-xr-xr-x  0 user  users    19 Apr 12 01:03 51675d57a68f060c2f000000 -> 2013-04-12@01:03:19
 ```
 
 List a session:
 
 ```bash
 $ ls -Rl ~/mnt/2013-04-12@01:03:19
-lr-xr-xr-x  0 root  wheel    18 Apr 12 01:03 51675d5883ab26232f000000 -> test1/test1.2/toto
-lr-xr-xr-x  0 root  wheel    18 Apr 12 01:03 51675d5883ab26232f000001 -> test1/test1.2/titi
-dr-xr-xr-x  0 root  wheel  4096 Jan  1  1970 test1
+lr-xr-xr-x  0 user  users    18 Apr 12 01:03 51675d5883ab26232f000000 -> test1/test1.2/toto
+lr-xr-xr-x  0 user  users    18 Apr 12 01:03 51675d5883ab26232f000001 -> test1/test1.2/titi
+dr-xr-xr-x  0 user  users  4096 Jan  1  1970 test1
 
 ~/mnt/2013-04-12@01:03:19/test1:
-dr-xr-xr-x  0 root  wheel  4096 Jan  1  1970 test1.2
+dr-xr-xr-x  0 user  users  4096 Jan  1  1970 test1.2
 
 ~/mnt/2013-04-12@01:03:19/test1/test1.2:
-----------  0 root  wheel  307435 Apr 12 01:03 titi
-----------  0 root  wheel       0 Apr 12 01:03 toto
+----------  0 user  users  307435 Apr 12 01:03 titi
+----------  0 user  users       0 Apr 12 01:03 toto
 ```
 
 ### Restore files
@@ -120,6 +120,7 @@ $ rm -rf ~/mnt/2013-04-10@18:29:33
  
 Check your staging:
 ```bash
+$ pca ltasks
 action    session id                    session name                  file id                       file name
 ------    ----------                    ------------                  -------                       ---------
 delete    5167484e1b012e9c67000000      2013-04-11@23:33:34           51674851fbcf72b567000004      memset.S
