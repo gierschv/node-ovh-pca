@@ -1,6 +1,6 @@
 var fs = require('fs'),
     pad = require('pad-component'),
-    f4js = require('fuse4js-gierschv'),
+    f4js = require('fuse4js'),
     moment = require('moment'),
     ipc = require('./ipc').ipc,
     helpers = require('./helpers'),
