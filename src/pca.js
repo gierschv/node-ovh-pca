@@ -247,15 +247,15 @@ exports.sshkey = function (_config, argv) {
 exports.tasks = function (_config, argv) {
   helpers.config = config = _config;
   helpers.restPca().tasks.$get({ function: argv.function }, function (success, tasks) {
-    console.info('id        function       status    todoDate                 ipAddress');
-    console.info('--        --------       ------    --------                 ---------');
+    console.info('id        function       status    todoDate                      ipAddress');
+    console.info('--        --------       ------    --------                      ---------');
     for (var i = 0 ; i < tasks.length ; ++i) {
       this[tasks[i]].$get(function (success, task) {
         if (success) {
           console.info(pad.right(task.id, 10) +
                        pad.right(task.function, 15) +
                        pad.right(task.status, 10) +
-                       pad.right(task.todoDate, 25) + task.ipAddress);
+                       pad.right(task.todoDate, 30) + task.ipAddress);
         }
       });
     }
