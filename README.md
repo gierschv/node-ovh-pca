@@ -1,5 +1,7 @@
 # node-ovh-pca
 
+[![Dependency Status](https://gemnasium.com/gierschv/node-ovh-pca.png)](https://gemnasium.com/gierschv/node-ovh-pca)
+
 This node module was developped to test the [OVH Public Cloud Archive Beta](http://www.ovh.com/fr/cloud/archives/) solution and [VMWare fuse4js](https://github.com/vmware/fuse4js).
 
 The goal is to provide a simple fuse file system containing the PCA sessions and files hierarchy to be able to find archived files and to restore and delete them easily.
@@ -146,6 +148,7 @@ $ pca tasks | grep delete
 ### 0.2.0
 
 * Restore / delete
+* Update dependencies (fixes of node-ovh 0.3.6-2)
 
 ### 0.1.0
 
