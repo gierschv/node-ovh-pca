@@ -148,7 +148,8 @@ $ pca tasks | grep delete
 ### 0.2.0
 
 * Restore / delete
-* Update dependencies (fixes of node-ovh 0.3.6-2)
+* Update dependencies (uses node-ovh >= 0.3.7)
+* Fixes mount of an empty PCA
 
 ### 0.1.0
 

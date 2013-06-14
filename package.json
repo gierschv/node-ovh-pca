@@ -1,6 +1,6 @@
 {
     "name": "pca",
-    "version": "0.2.0-2",
+    "version": "0.2.0-4",
     "description": "A simple test of OVH Public Cloud Archive Beta using VMWare fuse4js",
     "homepage": "https://github.com/gierschv/node-ovh-pca",
     "author": "Vincent Giersch <mail@vincent.sh>",

@@ -73,28 +73,34 @@ exports.fetchSessions = function (callback) {
     }
     else {
       exports.data = {};
-      var remaining = sessions.length;
-      for (var i = 0 ; i < sessions.length; i++) {
-        this[sessions[i]].$get(function (success, session) {
-          if (!success) {
-            console.error('Unable to fetch infos of session: ' + sessions[i]);
-          }
-          else {
-            exports.data[session.name] = {
-              $type: 'session',
-              $sessionId: session.id,
-              $infos: session,
-              files: {}
-            };
+      if (sessions.length === 0) {
+        callback(true);
+      }
+      else {
+        var remaining = sessions.length;
 
-            exports.data[session.id] = exports.data[session.name];
-          }
+        for (var i = 0 ; i < sessions.length; i++) {
+          this[sessions[i]].$get(function (success, session) {
+            if (!success) {
+              console.error('Unable to fetch infos of session: ' + sessions[i]);
+            }
+            else {
+              exports.data[session.name] = {
+                $type: 'session',
+                $sessionId: session.id,
+                $infos: session,
+                files: {}
+              };
 
-          // console.log('Remaining REST calls', + remaining - 1);
-          if (--remaining === 0) {
-            callback(true);
-          }
-        });
+              exports.data[session.id] = exports.data[session.name];
+            }
+
+            // console.log('Remaining REST calls', + remaining - 1);
+            if (--remaining === 0) {
+              callback(true);
+            }
+          });
+        }
       }
     }
   });
