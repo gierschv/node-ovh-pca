@@ -17,7 +17,7 @@ var handlers = {};
 handlers.getattr = function (path, cb) {
   var stat = {};
   var err = 0; // assume success
-  helpers.lookup(path, function (info) {
+  helpers.lookup(path, false, function (info) {
     var node = info.node;
 
     if (typeof(node) !== 'undefined' && node.$type === 'file' &&
@@ -116,7 +116,7 @@ handlers.readdir = function (path, cb) {
   var names = [];
   var err = 0; // assume success
   var callCb = true;
-  helpers.lookup(path, function (info) {
+  helpers.lookup(path, true, function (info) {
     switch (typeof info.node) {
     case 'undefined':
       err = -2; // -ENOENT
@@ -165,7 +165,7 @@ handlers.readdir = function (path, cb) {
 handlers.readlink = function (path, cb) {
   var err = -2, name = '';
 
-  helpers.lookup(path, function (info) {
+  helpers.lookup(path, path.split('/') <= 2, function (info) {
     if (info.node.$type === 'session' || info.node.$type === 'file') {
       err = 0;
       name = info.node.$infos.name;
@@ -178,7 +178,7 @@ handlers.readlink = function (path, cb) {
 handlers.chmod = function (path, mode, cb) {
   var err = -30;
 
-  helpers.lookup(path, function (info) {
+  helpers.lookup(path, true, function (info) {
     if (info.node.$type === 'file') {
       err = 0;
       if (mode & 0000400) {
@@ -197,7 +197,7 @@ handlers.release = function (path, fh, cb) {
 };
 
 handlers.unlink = function (path, cb) {
-  helpers.lookup(path, function (info) {
+  helpers.lookup(path, true, function (info) {
     if (typeof(info.node.$type) !== 'undefined') {
       helpers.addDeleteFile(info.node);
     }

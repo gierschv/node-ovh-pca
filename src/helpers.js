@@ -1,10 +1,11 @@
-var ovh = require('ovh');
+var ovh = require('ovh'),
+    async = require('async');
 var rest, restPca, restTimeout = 3000, freshSessions, freshLimit = 120000;
 
 exports.config = {};
 exports.data = {};
 exports.ltasks = {};
-exports.lookup = function (path, callback) {
+exports.lookup = function (path, fetchFiles, callback) {
   var cur = null, previous = null, name = '';
   if (path === '/') {
     exports.fetchSessions(function () {
@@ -13,8 +14,7 @@ exports.lookup = function (path, callback) {
   }
   else {
     var comps = path.split('/');
-
-    exports.fetchSessionFiles(comps[1], comps[1], function () {
+    var lookupProcess = function () {
       for (var i = 0; i < comps.length; i++) {
         previous = cur;
         if (i === 0) {
@@ -36,9 +36,15 @@ exports.lookup = function (path, callback) {
           }
         }
       }
-
       callback({ node: cur, parent: previous, name: name });
-    });
+    };
+
+    if (fetchFiles) {
+      exports.fetchSessionFiles(comps[1], comps[1], lookupProcess);
+    }
+    else {
+      lookupProcess();
+    }
   }
 };
 

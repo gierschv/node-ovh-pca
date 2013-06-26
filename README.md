@@ -145,6 +145,10 @@ $ pca tasks | grep delete
 
 ## Changelog
 
+### 0.2.1
+
+* It no longer going to fetch the files details when *getattr* or *readlink* of /*.
+
 ### 0.2.0
 
 * Restore / delete
