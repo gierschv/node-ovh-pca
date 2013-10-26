@@ -2,6 +2,7 @@ var ovh = require('ovh'),
     async = require('async');
 var rest, restPca, restTimeout = 3000, freshSessions, freshLimit = 120000;
 
+exports.freshSessions;
 exports.config = {};
 exports.data = {};
 exports.ltasks = {};
@@ -49,48 +50,49 @@ exports.lookup = function (path, fetchFiles, callback) {
 };
 
 exports.restPca = function () {
-  rest = rest || ovh({ cloud: { type: 'REST', path: '/cloud' }}, exports.config, { timeout: restTimeout });
+  exports.config.apis = ['cloud'];
+  rest = rest || ovh(exports.config);
   return rest.cloud[exports.config.passportServiceName].pca[exports.config.pcaServiceName];
 };
 
 exports.fetchService = function (callback) {
   restPca = restPca || exports.restPca();
-  restPca.$get(function(success, result) {
-    if (!success) {
+  restPca.$get(function(err, result) {
+    if (err) {
       console.error('Unable to fetch service information. Check your configuration.');
-      console.error('Error: ' + result);
+      console.error('Error: ' + err);
     }
 
-    callback.call(this, rest, success, result);
+    callback.call(this, rest, err, result);
   });
 };
 
 exports.fetchSessions = function (callback) {
   if (typeof(freshSessions) !== 'undefined' && new Date() - freshSessions < freshLimit) {
-    return callback(true);
+    return callback(null);
   }
 
   freshSessions = new Date();
   restPca = restPca || exports.restPca();
-  restPca.sessions.$get(function (success, sessions) {
-    if (!success) {
-      console.error('Unable to fetch the sessions list:' + sessions);
-      callback(false);
+  restPca.sessions.$get(function (err, sessions) {
+    if (err) {
+      console.error('Unable to fetch the sessions list:' + err);
+      callback(true);
     }
     else {
       exports.data = {};
       if (sessions.length === 0) {
-        callback(true);
+        callback(null);
       }
       else {
-        var remaining = sessions.length;
+        async.each(
+          sessions,
+          function (session, callback) {
+            this[session].$get(function (err, session) {
+              if (err) {
+                return callback(err);
+              }
 
-        for (var i = 0 ; i < sessions.length; i++) {
-          this[sessions[i]].$get(function (success, session) {
-            if (!success) {
-              console.error('Unable to fetch infos of session: ' + sessions[i]);
-            }
-            else {
               exports.data[session.name] = {
                 $type: 'session',
                 $sessionId: session.id,
@@ -99,14 +101,16 @@ exports.fetchSessions = function (callback) {
               };
 
               exports.data[session.id] = exports.data[session.name];
+              callback(null);
+            });
+          }.bind(this),
+          function (err) {
+            if (err) {
+              console.error('Unable to fetch infos of session: ' + err);
             }
-
-            // console.log('Remaining REST calls', + remaining - 1);
-            if (--remaining === 0) {
-              callback(true);
-            }
-          });
-        }
+            callback(null);
+          }
+        );
       }
     }
   });
@@ -118,27 +122,28 @@ exports.fetchSessionFiles = function (sessionId, sessionName, callback) {
   if (typeof(exports.data[sessionName]) === 'undefined') {
     return callback(false);
   }
-  else if (Object.keys(exports.data[sessionName].files).length > 0 && new Date() - freshSessions < freshLimit) {
+  if (Object.keys(exports.data[sessionName].files).length > 0 &&
+      new Date() - freshSessions < freshLimit) {
     return callback(true);
   }
 
   sessionId = exports.data[sessionName].$sessionId;
-  // freshSessions = new Date();
   restPca = restPca || exports.restPca();
 
-  restPca.sessions[sessionId].files.$get(function (success, files) {
-    if (!success) {
-      console.error('Unable to fetch the session files of session ' + sessionId + ':' + files);
+  restPca.sessions[sessionId].files.$get(function (err, files) {
+    if (err) {
+      console.error('Unable to fetch the session files of session ' + sessionId + ':' + err);
       callback(false);
     }
     else {
-      var remaining = files.length;
-      for (var i = 0 ; i < files.length; i++) {
-        this[files[i]].$get(function (success, file) {
-          if (!success) {
-            console.error('Unable to fetch infos of file: ' + files[i]);
-          }
-          else {
+      async.each(
+        files,
+        function (file, callback) {
+          this[file].$get(function (err, file) {
+            if (err) {
+              return callback(err);
+            }
+
             var dirs = file.name.split('/');
             var previous = exports.data[sessionName].files;
             for (i = 0; i < dirs.length; i++) {
@@ -159,14 +164,16 @@ exports.fetchSessionFiles = function (sessionId, sessionName, callback) {
             };
 
             exports.data[sessionName].files[file.id] = previous[dirs[i - 1]];
+            callback(null);
+          });
+        }.bind(this),
+        function (err) {
+          if (err) {
+            console.error('Unable to fetch infos of file:', err);
           }
-
-          // console.log('Remaining REST calls: ', remaining - 1);
-          if (--remaining === 0) {
-            callback(true);
-          }
-        });
-      }
+          callback(true);
+        }
+      );
     }
   });
 
@@ -174,80 +181,86 @@ exports.fetchSessionFiles = function (sessionId, sessionName, callback) {
 };
 
 // Tasks
-exports.createTask = function (fnc, sessionId, fileIds, callback) {
+exports.createTask = function (fnc, sessionId, callback) {
   restPca = restPca || exports.restPca();
-  restPca.tasks.$post({ taskFunction: fnc, sessionId: sessionId, fileIds: fileIds }, callback);
-};
-
-exports.createTaskDeleteSession = function (sessionId, callback) {
-  restPca = restPca || exports.restPca();
-  restPca.sessions[sessionId].$delete(callback);
+  
+  if (fnc === 'restore') {
+    restPca.sessions[sessionId].restore.$post(callback);
+  }
+  else if (fnc === 'delete') {
+    restPca.sessions[sessionId].$delete(callback);
+  }
+  else if (fnc === 'rename') {
+    freshSessions = 0;
+    restPca.sessions[sessionId].$put({ name: exports.data[sessionId].$newName }, callback);
+  }
+  else {
+    callback(null);
+  }
 };
 
 // Restore
-exports.addRestoreFile = function (node) {
+exports.addRestoreSession = function (node) {
   exports.ltasks.restore = exports.ltasks.restore || {};
 
   if (typeof(exports.ltasks.restore[node.$sessionId]) === 'undefined') {
-    exports.ltasks.restore[node.$sessionId] = {};
-    exports.ltasks.restore[node.$sessionId].$name = exports.data[node.$sessionId].$infos.name;
-  }
-
-  if (typeof(exports.ltasks.restore[node.$sessionId][node.$fileId]) === 'undefined') {
-    exports.ltasks.restore[node.$sessionId][node.$fileId] = node;
+    exports.ltasks.restore[node.$sessionId] = exports.data[node.$sessionId].$infos.name;
   }
 };
 
-exports.existsRestoreFile = function (sessionId, fileId) {
+exports.existsRestoreSession = function (sessionId) {
   return typeof(exports.ltasks.restore) !== 'undefined' &&
-         typeof(exports.ltasks.restore[sessionId]) !== 'undefined' &&
-         typeof(exports.ltasks.restore[sessionId][fileId]) !== 'undefined';
+         typeof(exports.ltasks.restore[sessionId]) !== 'undefined';
 };
 
-exports.delRestoreFile = function (sessionId, fileId) {
+exports.delRestoreSession = function (sessionId) {
   if (typeof(exports.ltasks.restore) !== 'undefined' &&
-      typeof(exports.ltasks.restore[sessionId]) !== 'undefined' &&
-      typeof(exports.ltasks.restore[sessionId][fileId]) !== 'undefined') {
-    delete exports.ltasks.restore[sessionId][fileId];
-
-    if (Object.keys(exports.ltasks.restore[sessionId]).length <= 1) {
-      delete exports.ltasks.restore[sessionId];
-    }
+      typeof(exports.ltasks.restore[sessionId]) !== 'undefined') {
+    delete exports.ltasks.restore[sessionId];
   }
 };
 
 // Delete
-exports.addDeleteFile = function (node) {
+exports.addDeleteSession = function (node) {
   exports.ltasks.delete = exports.ltasks.delete || {};
-
-  if (typeof(exports.ltasks.delete[node.$sessionId]) === 'undefined') {
-    exports.ltasks.delete[node.$sessionId] = {};
-    exports.ltasks.delete[node.$sessionId].$name = exports.data[node.$sessionId].$infos.name;
-  }
-
   if (node.$type === 'session') {
     exports.ltasks.delete[node.$sessionId] = exports.data[node.$sessionId].$infos.name;
   }
-  else if (node.$type === 'file' &&
-           typeof(exports.ltasks.delete[node.$sessionId]) !== 'string' &&
-           typeof(exports.ltasks.delete[node.$sessionId][node.$fileId]) === 'undefined') {
-    exports.ltasks.delete[node.$sessionId][node.$fileId] = node;
-  }
 };
 
-exports.existsDeleteFile = function (sessionId, fileId) {
+exports.existsDeleteSession = function (sessionId) {
   if (typeof(exports.data[sessionId]) === 'undefined') {
     return false;
   }
 
   sessionId = exports.data[sessionId].$sessionId;
-  if (typeof(exports.data[sessionId].files[fileId]) !== 'undefined' &&
-      typeof(exports.data[sessionId].files[fileId].$infos) !== 'undefined') {
-    fileId = exports.data[sessionId].files[fileId].$infos.id;
-  }
-
   return typeof(exports.ltasks.delete) !== 'undefined' &&
-         typeof(exports.ltasks.delete[sessionId]) !== 'undefined' &&
-         (typeof(exports.ltasks.delete[sessionId][fileId]) !== 'undefined' ||
-          typeof(exports.ltasks.delete[sessionId]) === 'string');
+         typeof(exports.ltasks.delete[sessionId]) !== 'undefined';
+};
+
+// Rename
+exports.addRenameSession = function (node, dst) {
+  exports.ltasks.rename = exports.ltasks.rename || {};
+
+  if (typeof(exports.ltasks.rename[node.$sessionId]) === 'undefined') {
+    exports.ltasks.rename[node.$sessionId] = dst;
+    exports.data[node.$sessionId].$newName = dst;
+    exports.data[dst] = exports.data[node.$infos.name];
+    delete exports.data[node.$infos.name];
+  }
+};
+
+exports.existsRenameSession = function (sessionId) {
+  return typeof(exports.ltasks.rename) !== 'undefined' &&
+         typeof(exports.ltasks.rename[sessionId]) !== 'undefined';
+};
+
+exports.delRenameSession = function (sessionId) {
+  if (typeof(exports.ltasks.rename) !== 'undefined' &&
+      typeof(exports.ltasks.rename[sessionId]) !== 'undefined') {
+    exports.data[exports.data[sessionId].$infos.name] = exports.data[sessionId];
+    delete exports.data[exports.ltasks.rename[sessionId]];
+    delete exports.data[sessionId].$newName;
+    delete exports.ltasks.rename[sessionId];
+  }
 };

@@ -2,6 +2,8 @@ var fs = require('fs'),
     pad = require('pad-component'),
     f4js = require('fuse4js'),
     moment = require('moment'),
+    async = require('async'),
+    Table = require('cli-table'),
     ipc = require('./ipc').ipc,
     helpers = require('./helpers'),
     utils = require('./utils');
@@ -33,9 +35,9 @@ handlers.getattr = function (path, cb) {
     case 'object':
       // Symlink to session name
       if (info.name === node.$sessionId) {
-        if (!helpers.existsDeleteFile(node.$sessionId)) {
+        if (!helpers.existsDeleteSession(node.$sessionId)) {
           stat.mode = S_IFLNK | 0000555;
-          stat.size = node.$infos.name.length;
+          stat.size = node.$newName ? node.$newName.length : node.$infos.name.length;
         }
         else {
           err = -2;
@@ -43,7 +45,7 @@ handlers.getattr = function (path, cb) {
       }
       // Symlink to file name
       else if (info.name === node.$fileId) {
-        if (!helpers.existsDeleteFile(node.$sessionId, node.$fileId)) {
+        if (!helpers.existsDeleteSession(node.$sessionId, node.$fileId)) {
           stat.mode = S_IFLNK | 0000555;
           stat.size = node.$infos.name.length;
         }
@@ -52,7 +54,7 @@ handlers.getattr = function (path, cb) {
         }
       }
       else {
-        if (!helpers.existsDeleteFile(node.$sessionId, node.$fileId)) {
+        if (!helpers.existsDeleteSession(node.$sessionId, node.$fileId)) {
           stat.size = 4096;
           stat.mode = S_IFDIR | 0000755;
         }
@@ -68,8 +70,8 @@ handlers.getattr = function (path, cb) {
       stat.mode = S_IFREG | 0000444;
 
       if (typeof(info.node) === 'object' && info.node.$type === 'file') {
-        if (!helpers.existsDeleteFile(info.node.$sessionId, info.node.$fileId)) {
-          stat.mode = S_IFREG | (helpers.existsRestoreFile(info.node.$sessionId, info.node.$fileId) ? 0000400 : 0000000);
+        if (!helpers.existsDeleteSession(info.node.$sessionId)) {
+          stat.mode = S_IFREG | (helpers.existsDeleteSession(info.node.$sessionId) ? 0000400 : 0000000);
           stat.size = info.node.$infos.size;
         }
         else {
@@ -133,19 +135,17 @@ handlers.readdir = function (path, cb) {
       if (typeof(info.node) === 'object' && info.node.$type === 'session') {
         callCb = false;
 
-        helpers.fetchSessionFiles(info.node.$sessionId, info.node.$infos.name, function () {
-          for (var key in info.node.files) {
-            if (!helpers.existsDeleteFile(info.node.$sessionId, key)) {
-              names[i++] = key;
-            }
+        helpers.fetchSessionFiles(
+          info.node.$sessionId,
+          info.node.$newName || info.node.$infos.name,
+          function () {
+            cb(err, Object.keys(info.node.files));
           }
-
-          cb(err, names);
-        });
+        );
       }
       else {
         for (var key in info.node) {
-          if (!helpers.existsDeleteFile(key)) {
+          if (!helpers.existsDeleteSession(key)) {
             names[i++] = key;
           }
         }
@@ -168,7 +168,7 @@ handlers.readlink = function (path, cb) {
   helpers.lookup(path, path.split('/') <= 2, function (info) {
     if (info.node.$type === 'session' || info.node.$type === 'file') {
       err = 0;
-      name = info.node.$infos.name;
+      name = info.node.$newName || info.node.$infos.name;
     }
 
     return cb(err, name);
@@ -182,30 +182,37 @@ handlers.chmod = function (path, mode, cb) {
     if (info.node.$type === 'file') {
       err = 0;
       if (mode & 0000400) {
-        helpers.addRestoreFile(info.node);
+        helpers.addRestoreSession(info.node);
       }
       else {
-        helpers.delRestoreFile(info.node.$sessionId, info.node.$fileId);
+        helpers.delRestoreSession(info.node.$sessionId);
       }
     }
     cb(err);
   });
 };
 
-handlers.release = function (path, fh, cb) {
-  cb(0);
-};
-
 handlers.unlink = function (path, cb) {
   helpers.lookup(path, true, function (info) {
     if (typeof(info.node.$type) !== 'undefined') {
-      helpers.addDeleteFile(info.node);
+      helpers.addDeleteSession(info.node);
     }
     cb(0);
   });
 };
 
 handlers.rmdir = handlers.unlink;
+
+handlers.rename = function (src, dst, cb) {
+  var err = 0; // assume success
+  helpers.lookup(src, false, function (info) {
+    if (info.node.$type === 'session') {
+      helpers.addRenameSession(info.node, dst.split('/').pop());
+    }
+
+    cb(0);
+  });
+}
 
 handlers.init = function (cb) {
   console.info('File system started at ' + config.mountPoint);
@@ -227,18 +234,18 @@ exports.sshkey = function (_config, argv) {
   }
 
   helpers.config = config = _config;
-  helpers.fetchService(function(rest, success, result) {
-    if (!success) {
+  helpers.fetchService(function(rest, err, result) {
+    if (err) {
       return false;
     }
 
     this.sshkey = fs.readFileSync(argv._[1]).toString();
-    this.$put(function(success, error) {
-      if (success) {
+    this.$put(function(err) {
+      if (!err) {
         console.info('Your SSH key has been updated.');
       }
       else {
-        console.error('Error: ' + error);
+        console.error('Error: ' + err);
       }
     });
   });
@@ -246,19 +253,31 @@ exports.sshkey = function (_config, argv) {
 
 exports.tasks = function (_config, argv) {
   helpers.config = config = _config;
-  helpers.restPca().tasks.$get({ function: argv.function }, function (success, tasks) {
-    console.info('id        function       status    todoDate                      ipAddress');
-    console.info('--        --------       ------    --------                      ---------');
-    for (var i = 0 ; i < tasks.length ; ++i) {
-      this[tasks[i]].$get(function (success, task) {
-        if (success) {
-          console.info(pad.right(task.id, 10) +
-                       pad.right(task.function, 15) +
-                       pad.right(task.status, 10) +
-                       pad.right(task.todoDate, 30) + task.ipAddress);
-        }
-      });
-    }
+  helpers.restPca().tasks.$get(argv, function (err, tasks) {
+    async.map(
+      tasks,
+      function (task, callback) {
+        this[task].$get(task, callback);
+      }.bind(this),
+      function (error, tasks) {
+        var table = new Table({
+          head: ['id', 'function', 'status', 'todoDate', 'ipAddress'],
+          colWidths: [6, 15, 12, 28, 16]
+        });
+
+        tasks.forEach(function (task) {
+          table.push([
+            task.id || 'unkown',
+            task.function || 'unkown',
+            task.status || 'unkown',
+            task.todoDate || 'unkown',
+            task.ipAddress || 'unkown'
+          ]);
+        });
+
+        console.info(table.toString());
+      }
+    );
   });
 };
 
@@ -268,8 +287,8 @@ exports.task = function (_config, argv) {
   }
   helpers.config = config = _config;
 
-  helpers.restPca().tasks[argv._[1]].$get(function (success, task) {
-    console.info(task);
+  helpers.restPca().tasks[argv._[1]].$get(function (err, task) {
+    console.info(err || task);
   });
 };
 
@@ -282,48 +301,35 @@ exports.ltasks = function (_config, argv) {
     })
     .on('data', function(sessions) {
       ipcClt.destroy();
-      console.info('action    session id                    session name                  file id                       file name');
-      console.info('------    ----------                    ------------                  -------                       ---------');
+      var table = new Table({
+          head: ['action', 'session id', 'session name'],
+          colWidths: [10, 26, 44]
+        });
 
-      var sid, fid;
-      for (sid in sessions.restore) {
-        for (fid in sessions.restore[sid]) {
-          if (fid[0] !== '$') {
-            console.info(pad.right('restore', 10) +
-                         pad.right(sid, 30) + pad.right(sessions.restore[sid].$name, 30) +
-                         pad.right(fid, 30) + sessions.restore[sid][fid].$infos.name);
-          }
+      for (var fnc in sessions) {
+        for (var sid in sessions[fnc]) {
+          table.push([fnc, sid, sessions[fnc][sid]]);
         }
       }
 
-      for (sid in sessions.delete) {
-        if (typeof(sessions.delete[sid]) === 'string') {
-          console.info(pad.right('delete', 10) +
-                       pad.right(sid, 30) + pad.right(sessions.delete[sid], 30) +
-                       pad.right('*', 30) + '*');
-        }
-        else {
-          for (fid in sessions.delete[sid]) {
-            if (fid[0] !== '$') {
-              console.info(pad.right('delete', 10) +
-                           pad.right(sid, 30) + pad.right(sessions.delete[sid].$name, 30) +
-                           pad.right(fid, 30) + sessions.delete[sid][fid].$infos.name);
-            }
-          }
-        }
-      }
+      console.info(table.toString());
     });
 };
 
 exports.ltask = function (_config, argv) {
   if (argv._.length < 4) {
-    return console.error('Usage: pca ltask (restore|delete) (cancel|create) sessionId');
+    return console.error('Usage: pca ltask (restore|rename|delete) (cancel|create) sessionId');
   }
   helpers.config = config = _config;
   ipcClt = new ipc(config.socketPath).client();
   ipcClt
     .on('connect', function(conn) {
-      ipcClt.write({ call: 'ltask', task: argv._[1], action: argv._[2], sessionId: argv._[3] });
+      ipcClt.write({
+        call: 'ltask',
+        task: argv._[1],
+        action: argv._[2],
+        sessionId: argv._[3]
+      });
     })
     .on('data', function(result) {
       ipcClt.destroy();
@@ -332,41 +338,55 @@ exports.ltask = function (_config, argv) {
 };
 
 exports.ltaskProcess = function (ltask, callback) {
-  if (ltask.task !== 'restore' && ltask.task !== 'delete') {
-    return callback({ success: false, result: 400 });
+  if (ltask.task !== 'restore' && ltask.task !== 'delete' && ltask.task !== 'rename') {
+    return callback({ err: 400, result: 400 });
   }
 
   if (typeof(helpers.ltasks[ltask.task]) !== 'undefined' &&
-      typeof(helpers.ltasks[ltask.task][ltask.sessionId]) !== 'undefined') {
+      (ltask.sessionId === 'all' ||
+      typeof(helpers.ltasks[ltask.task][ltask.sessionId]) !== 'undefined')) {
     if (ltask.action === 'cancel') {
-      delete helpers.ltasks[ltask.task][ltask.sessionId];
-      return callback({ success: true });
-    }
-    else if (ltask.action === 'create') {
-      if (typeof(helpers.ltasks[ltask.task][ltask.sessionId]) === 'string' &&
-          ltask.task === 'delete') {
-        helpers.createTaskDeleteSession(ltask.sessionId, function (success, result) {
-          delete helpers.ltasks[ltask.task][ltask.sessionId];
-          callback({ success: success, result: utils.clone(result) });
-        });
+      if (ltask.task === 'rename') {
+        if (ltask.sessionId === 'all') {
+          Object.keys(helpers.ltasks[ltask.task]).forEach(helpers.delRenameSession);
+        }
+        else {
+          helpers.delRenameSession(ltask.sessionId);
+        }
       }
       else {
-        var files = [];
-        for (var fid in helpers.ltasks[ltask.task][ltask.sessionId]) {
-          if (fid[0] !== '$') {
-            files.push(fid);
-          }
+        if (ltask.sessionId === 'all') {
+          delete helpers.ltasks[ltask.task];
         }
-
-        helpers.createTask(ltask.task, ltask.sessionId, files, function (success, result) {
+        else {
           delete helpers.ltasks[ltask.task][ltask.sessionId];
-          callback({ success: success, result: utils.clone(result) });
+        }
+      }
+      return callback({ err: null });
+    }
+    else if (ltask.action === 'create') {
+      if (ltask.sessionId === 'all') {
+        async.map(
+          Object.keys(helpers.ltasks[ltask.task]),
+          function (sessionId, callback) {
+            helpers.createTask(ltask.task, sessionId, callback);
+          },
+          function (err, result) {
+            delete helpers.ltasks[ltask.task];
+            callback({ err: err, result: utils.clone(result) });
+          }
+        );
+      }
+      else {
+        helpers.createTask(ltask.task, ltask.sessionId, function (err, result) {
+          delete helpers.ltasks[ltask.task][ltask.sessionId];
+          callback({ err: err, result: utils.clone(result) });
         });
       }
     }
   }
   else {
-    return callback({ success: false, result: 404 });
+    return callback({ err: 404, result: 404 });
   }
 };
 
@@ -380,6 +400,11 @@ exports.mount = function (_config, argv) {
   config.debug = argv.debug || false;
 
   // Listening for ltasks
+  if (fs.existsSync(config.socketPath)) {
+    return console.error('Another PCA is already mounted or the UNIX socket '
+      + config.socketPath + ' was not removed properly.');
+  }
+
   ipcSrv = new ipc(config.socketPath).server();
   ipcSrv.on('data', function(data, conn) {
     if (data.call === 'ltasks') {
@@ -395,9 +420,9 @@ exports.mount = function (_config, argv) {
   });
 
   // Fuse
-  helpers.fetchService(function(rest, success, result) {
-    if (!success) {
-      return false;
+  helpers.fetchService(function(rest, err, result) {
+    if (err) {
+      return console.error('Error:', err);
     }
 
     try {
@@ -416,5 +441,6 @@ exports.exit = function () {
   process.exit(0);
 };
 
-process.on('SIGINT', exports.exit)
-       .on('SIGTERM', exports.exit);
+process
+  .on('SIGINT', exports.exit)
+  .on('SIGTERM', exports.exit);

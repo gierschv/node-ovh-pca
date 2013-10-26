@@ -1,4 +1,4 @@
-#!/usr/bin/env node --harmony-proxies
+#!/usr/bin/env node
 
 var path = require('path'),
     fs = require('fs'),
@@ -30,24 +30,22 @@ var config = {
 utils.merge(config, argv);
 
 // Call auth
-var rest = ovh({ auth: { type: 'REST', path: '/auth' } }, config),
-    restPath = '/cloud/' + config.passportServiceName + '/pca/' + config.pcaServiceName + '*';
-rest.auth.call('POST', '/auth/credential', {
+var restPath = '/cloud/' + config.passportServiceName + '/pca/' + config.pcaServiceName + '*';
+ovh(config).request('POST', '/auth/credential', {
   'accessRules': [
     { 'method': 'GET', 'path': restPath },
     { 'method': 'POST', 'path': restPath },
     { 'method': 'PUT', 'path': restPath },
     { 'method': 'DELETE', 'path': restPath }
   ]
-}, function (success, credential) {
-  if (!success) {
+}, function (err, credential) {
+  if (err) {
     console.error('Failed while requesting a consumer key');
-    console.error('Error returned was: ' + credential);
+    console.error('Error returned was: ', err);
     process.exit(1);
   }
 
   config.consumerKey = credential.consumerKey;
-  config.credentialToken = credential.validationUrl.split('credentialToken=')[1];
 
   // Write config
   delete config._;

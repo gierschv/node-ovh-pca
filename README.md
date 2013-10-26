@@ -1,12 +1,13 @@
-# node-ovh-pca
+# PCA
 
-[![Dependency Status](https://gemnasium.com/gierschv/node-ovh-pca.png)](https://gemnasium.com/gierschv/node-ovh-pca)
+[![NPM version](https://badge.fury.io/js/pca.png)](http://badge.fury.io/js/pca)
+[![Dependency Status](https://david-dm.org/gierschv/node-ovh-pca.png)](https://david-dm.org/gierschv/node-ovh-pca)
 
-This node module was developped to test the [OVH Public Cloud Archive Beta](http://www.ovh.com/fr/cloud/archives/) solution and [VMWare fuse4js](https://github.com/vmware/fuse4js).
+This node module was developed to browse and manage the [OVH Public Cloud Archive Beta](http://www.ovh.com/fr/cloud/archives/). It's based on [VMWare fuse4js](https://github.com/vmware/fuse4js).
 
 The goal is to provide a simple fuse file system containing the PCA sessions and files hierarchy to be able to find archived files and to restore and delete them easily.
 
-**This module is unofficial and consequently not maintained by OVH. For testing purpose only.**
+**This module is unofficial and consequently not maintained by OVH.**
 
 ## Usage
 
@@ -44,7 +45,7 @@ File system started at ~/mnt
 To stop it, type this in another shell: fusermount -u ~/mnt or umount ~/mnt
 ```
 
-In an another terminal, list your sessions (presented as folder named with the session name and a symlink named with the session identifier):
+In an another terminal, list your sessions:
 
 ```bash
 $ ls -l ~/mnt
@@ -75,75 +76,121 @@ dr-xr-xr-x  0 user  users  4096 Jan  1  1970 test1.2
 ----------  0 user  users       0 Apr 12 01:03 toto
 ```
 
-### Restore files
+### Restore the sessions
 
-To restore files, you have to stage the files you want to restore. To do that, just `chmod u+r` the files you want to restore:
+To restore the sessions, you have to stage the one you want to restore. To do that, just `chmod u+r` the sessions you want to restore:
 
 ```bash
-$ chmod -R u+r ~/mnt/517bf4f143e97ba44b000000/backup/mysql
-$ chmod +r ~/mnt/2013-04-10@18:29:33/backup.tgz
+$ chmod +r ~/mnt/2013-08-07@23:03:26/backup/git/flat/ta.git.tar.gpg
+$ chmod -R +r ~/mnt/2013-08-08@23:03:24
 ```
 
 Check your staging:
 ```bash
 $ pca ltasks
-action    session id                    session name                  file id                       file name
-------    ----------                    ------------                  -------                       ---------
-restore   5165af8da0b3065823000000      2013-04-10@18:29:33           5165b05ff0e897d225000000      backup.tgz
-restore   517bf4f143e97ba44b000000      2013-04-27@15:55:29           517bf4f71d0e50c34b000001      backup/mysql/3.sql.gpg
-restore   517bf4f143e97ba44b000000      2013-04-27@15:55:29           517bf4f71d0e50c34b000000      backup/mysql/2.sql.gpg
-restore   517bf4f143e97ba44b000000      2013-04-27@15:55:29           517bf4f71d0e50c34b000002      backup/mysql/1.sql.gpg
+┌──────────┬──────────────────────────┬────────────────────────────────────────────┐
+│ action   │ session id               │ session name                               │
+├──────────┼──────────────────────────┼────────────────────────────────────────────┤
+│ restore  │ 5202d23e6eb57b1f5f000000 │ 2013-08-07@23:03:26                        │
+├──────────┼──────────────────────────┼────────────────────────────────────────────┤
+│ restore  │ 520423bcb0a662cd56000000 │ 2013-08-08@23:03:24                        │
+└──────────┴──────────────────────────┴────────────────────────────────────────────┘
 ```
 
 To unstage a file, just `chmod u-r` it.
 
 Create the tasks for these two sessions:
 ```bash
-$ pca ltask restore create 5165af8da0b3065823000000
-$ pca ltask restore create 517bf4f143e97ba44b000000
+$ pca ltask restore create 5202d23e6eb57b1f5f000000
+$ pca ltask restore create 520423bcb0a662cd56000000
+```
+
+or
+
+```bash
+$ pca ltask restore create all
 ```
 
 The tasks have been created:
 ```bash
-$ pca tasks | grep restore
-779       restore        todo      2013-04-28 20:46:57      178.33.241.56
-778       restore        todo      2013-04-28 20:43:25      178.33.241.56
+$ pca tasks --status todo
+┌──────┬───────────────┬────────────┬────────────────────────────┬────────────────┐
+│ id   │ function      │ status     │ todoDate                   │ ipAddress      │
+├──────┼───────────────┼────────────┼────────────────────────────┼────────────────┤
+│ 8510 │ restore       │ todo       │ 2013-10-26T22:53:53+02:00  │ unkown         │
+├──────┼───────────────┼────────────┼────────────────────────────┼────────────────┤
+│ 8511 │ restore       │ todo       │ 2013-10-26T22:53:53+02:00  │ unkown         │
+└──────┴───────────────┴────────────┴────────────────────────────┴────────────────┘
 ```
 
 ### Delete files or sessions
 
-To delete files or sesssions, the method is similar than to restore: just `rm` the files.
+To delete the sesssions, the method is similar than to restore: just `rm` the files.
 
 ```bash
-$ rm -f ~/mnt/2013-04-11@23:33:34/memset.S
-$ rm -f ~/mnt/2013-04-11@23:33:34/51674851fbcf72b56700000c
-$ rm -rf ~/mnt/2013-04-10@18:29:33
+$ rm -rf ~/mnt/2013-08-07@23:03:26
  ```
  
 Check your staging:
 ```bash
 $ pca ltasks
-action    session id                    session name                  file id                       file name
-------    ----------                    ------------                  -------                       ---------
-delete    5167484e1b012e9c67000000      2013-04-11@23:33:34           51674851fbcf72b567000004      memset.S
-delete    5167484e1b012e9c67000000      2013-04-11@23:33:34           51674851fbcf72b56700000c      strlen.S
-delete    5165af8da0b3065823000000      2013-04-10@18:29:33           *                             *
+┌──────────┬──────────────────────────┬────────────────────────────────────────────┐
+│ action   │ session id               │ session name                               │
+├──────────┼──────────────────────────┼────────────────────────────────────────────┤
+│ delete   │ 5202d23e6eb57b1f5f000000 │ 2013-08-07@23:03:26                        │
+└──────────┴──────────────────────────┴────────────────────────────────────────────┘
 ```
 
-Create the tasks for these two sessions:
+Create the tasks for this sessions:
 ```bash
-$ pca ltask delete create 5167484e1b012e9c67000000
-$ pca ltask delete create 5165af8da0b3065823000000
+$ pca ltask delete create 5202d23e6eb57b1f5f000000
 ```
 
 The tasks have been created:
 ```bash
-$ pca tasks | grep delete
-789       delete         todo      2013-04-28 23:35:20      178.33.62.120
-790       delete         todo      2013-04-28 23:48:07      178.33.62.120
+$ pca tasks --status todo
+┌──────┬───────────────┬────────────┬────────────────────────────┬────────────────┐
+│ id   │ function      │ status     │ todoDate                   │ ipAddress      │
+├──────┼───────────────┼────────────┼────────────────────────────┼────────────────┤
+│ 8512 │ delete        │ todo       │ 2013-10-26T23:01:26+02:00  │ unkown         │
+└──────┴───────────────┴────────────┴────────────────────────────┴────────────────┘
+```
+
+### Rename a session
+
+To rename a session, the method is similar than to delete or restore: just `mv` the sessions.
+
+```bash
+$ ls -al ~/mnt
+drwxr-xr-x  0 giersc_v  staff  4096 Oct 26 22:56 2013-10-26@20:56:15
+lr-xr-xr-x  0 giersc_v  staff    19 Oct 26 22:56 526c2c6f6dd9061727000000 -> 2013-10-26@20:56:15
+
+$ mv ~/mnt/2013-10-26@20:56:15 ~/mnt/my_archive
+
+$ pca ltasks
+┌──────────┬──────────────────────────┬────────────────────────────────────────────┐
+│ action   │ session id               │ session name                               │
+├──────────┼──────────────────────────┼────────────────────────────────────────────┤
+│ rename   │ 526c2c6f6dd9061727000000 │ my_archive                                 │
+└──────────┴──────────────────────────┴────────────────────────────────────────────┘
+
+$ pca ltask rename create all
+$ ls -al ~/mnt
+drwxr-xr-x  0 giersc_v  staff  4096 Oct 26 22:56 my_archive
+lr-xr-xr-x  0 giersc_v  staff    10 Oct 26 22:56 526c2c6f6dd9061727000000 -> my_archive
 ```
 
 ## Changelog
+
+### 0.3
+
+* Uses npm [ovh](https://npmjs.org/package/ovh) v1.0.x.
+* Stops using the deprecated API method `POST /cloud/{serviceName}/pca/{pcaServiceName}/tasks` (#9).
+* Restores are now limited to the full session (#9).
+* Fixes the missing "all" keyword for `ltask` (#6).
+* Checks the existence of the UNIX socket before creating it (#8).
+* The renaming of the sessions is now supported with a `mv` (#10).
+* Usage of `cli-table` for tables.
 
 ### 0.2.1
 
@@ -175,6 +222,4 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-
 [![Bitdeli Badge](https://d2weczhvl823v0.cloudfront.net/gierschv/node-ovh-pca/trend.png)](https://bitdeli.com/free "Bitdeli Badge")
-
