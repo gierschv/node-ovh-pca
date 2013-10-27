@@ -1,36 +1,11 @@
-#!/usr/bin/env node --harmony-proxies
+#! /bin/sh
 
-var path = require('path'),
-    fs = require('fs'),
-    utils = require('../src/utils'),
-    optimist = require('optimist');
+SELF_PATH=$(cd -P -- "$(dirname -- "$0")" && pwd -P) && SELF_PATH=$SELF_PATH/$(basename -- "$0")
 
-var argv = optimist.boolean(['help','debug']).argv,
-    defaultConfigFile = path.normalize(path.join(process.env.HOME || process.env.HOMEPATH, '.ovh-pca')),
-    config = JSON.parse(fs.readFileSync(argv.file || defaultConfigFile));
+while [ -h $SELF_PATH ]; do
+    DIR=$(dirname -- "$SELF_PATH")
+    SYM=$(readlink $SELF_PATH)
+    SELF_PATH=$(cd $DIR && cd $(dirname -- "$SYM") && pwd)/$(basename -- "$SYM")
+done
 
-if (['sshkey', 'mount', 'tasks', 'task', 'ltasks', 'ltask'].indexOf(argv._[0]) >= 0) {
-  require('../src/pca')[argv._[0]](config, argv);
-}
-else {
-  console.info('Usage: pca action [arg, ...] [options]');
-  console.info('Actions:');
-  console.info('  mount          : Mount a PCA as a fuse volume');
-  console.info('    directory        Target directory ');
-  console.info('  sshkey         : Change the SSL key');
-  console.info('    file             The public SSH key file');
-  console.info('  tasks          : List tasks');
-  console.info('    --function       Filter by function (sshKey|restore|delete)');
-  console.info('    --status         The status of the task');
-  console.info('  task           : Detail of a task');
-  console.info('    id               The task ID');
-  console.info('  ltasks         : List tasks in staging');
-  console.info('  ltask          : Staged task');
-  console.info('    type             Type of the task (restore|delete)');
-  console.info('    action           Action for the new task (create|cancel)');
-  console.info('    sessionId        Session ID ([0-9a-f]+|all)');
-  console.info('Options:');
-  console.info('  --debug        : Debug mode');
-  console.info('  --file         : Path for the configuration file, default is ~/.ovh-pca');
-  process.exit(0);
-}
+exec node --harmony-proxies ${SELF_PATH}.js

@@ -182,7 +182,15 @@ lr-xr-xr-x  0 giersc_v  staff    10 Oct 26 22:56 526c2c6f6dd9061727000000 -> my_
 
 ## Changelog
 
-### 0.3
+### 0.3.2
+
+* Fix shebang for `pca` script
+
+### 0.3.1
+
+* Remove useless depenency
+
+### 0.3.0
 
 * Uses npm [ovh](https://npmjs.org/package/ovh) v1.0.x.
 * Stops using the deprecated API method `POST /cloud/{serviceName}/pca/{pcaServiceName}/tasks` (#9).
