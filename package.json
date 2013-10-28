@@ -1,6 +1,6 @@
 {
     "name": "pca",
-    "version": "0.3.2",
+    "version": "0.3.3",
     "description": "A fuse filesystem to browse and manage your OVH Public Cloud Archive",
     "homepage": "https://github.com/gierschv/node-ovh-pca",
     "author": "Vincent Giersch <mail@vincent.sh>",

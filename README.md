@@ -182,6 +182,10 @@ lr-xr-xr-x  0 giersc_v  staff    10 Oct 26 22:56 526c2c6f6dd9061727000000 -> my_
 
 ## Changelog
 
+### 0.3.3
+
+* Fix args
+
 ### 0.3.2
 
 * Fix shebang for `pca` script
