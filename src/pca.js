@@ -252,7 +252,13 @@ exports.sshkey = function (_config, argv) {
 
 exports.tasks = function (_config, argv) {
   helpers.config = config = _config;
-  helpers.restPca().tasks.$get(argv, function (err, tasks) {
+
+  helpers.restPca().tasks.$get(
+    {
+      function: argv.function,
+      status: argv.status
+    },
+    function (err, tasks) {
     async.map(
       tasks,
       function (task, callback) {
