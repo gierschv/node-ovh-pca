@@ -267,7 +267,7 @@ exports.tasks = function (_config, argv) {
       function (error, tasks) {
         var table = new Table({
           head: ['id', 'function', 'status', 'todoDate', 'ipAddress'],
-          colWidths: [6, 15, 12, 28, 16]
+          colWidths: [11, 15, 12, 28, 16]
         });
 
         tasks.forEach(function (task) {
