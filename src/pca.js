@@ -259,31 +259,32 @@ exports.tasks = function (_config, argv) {
       status: argv.status
     },
     function (err, tasks) {
-    async.map(
-      tasks,
-      function (task, callback) {
-        this[task].$get(task, callback);
-      }.bind(this),
-      function (error, tasks) {
-        var table = new Table({
-          head: ['id', 'function', 'status', 'todoDate', 'ipAddress'],
-          colWidths: [11, 15, 12, 28, 16]
-        });
+      async.map(
+        tasks,
+        function (task, callback) {
+          this[task].$get(task, callback);
+        }.bind(this),
+        function (error, tasks) {
+          var table = new Table({
+            head: ['id', 'function', 'status', 'todoDate', 'ipAddress'],
+            colWidths: [11, 15, 12, 28, 16]
+          });
 
-        tasks.forEach(function (task) {
-          table.push([
-            task.id || 'unkown',
-            task.function || 'unkown',
-            task.status || 'unkown',
-            task.todoDate || 'unkown',
-            task.ipAddress || 'unkown'
-          ]);
-        });
+          tasks.forEach(function (task) {
+            table.push([
+              task.id || 'unkown',
+              task.function || 'unkown',
+              task.status || 'unkown',
+              task.todoDate || 'unkown',
+              task.ipAddress || 'unkown'
+            ]);
+          });
 
-        console.info(table.toString());
-      }
-    );
-  });
+          console.info(table.toString());
+        }
+      );
+    }
+  );
 };
 
 exports.task = function (_config, argv) {
